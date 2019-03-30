@@ -1,8 +1,31 @@
 #!/usr/bin/env sh
 
+# parsing yaml function
+parse_yaml() {
+   local prefix=$2
+   local s='[[:space:]]*' w='[a-zA-Z0-9_]*' fs=$(echo @|tr @ '\034')
+   sed -ne "s|^\($s\)\($w\)$s:$s\"\(.*\)\"$s\$|\1$fs\2$fs\3|p" \
+        -e "s|^\($s\)\($w\)$s:$s\(.*\)$s\$|\1$fs\2$fs\3|p"  $1 |
+   awk -F$fs '{
+      indent = length($1)/2;
+      vname[indent] = $2;
+      for (i in vname) {if (i > indent) {delete vname[i]}}
+      if (length($3) > 0) {
+         vn=""; for (i=0; i<indent; i++) {vn=(vn)(vname[i])("_")}
+         printf("%s%s%s=\"%s\"\n", "'$prefix'",vn, $2, $3);
+      }
+   }'
+}
+
+# read project config file file and assign config_ prefix
+eval $(parse_yaml _config.yml "config_")
+
 # Run this script to deploy the app to Github Pages.
 
 RED='\033[0;31m'
+GREEN='\033[0;92m'
+CYAN='\033[1;96m'
+NC='\033[0m'
 
 # Exit if any subcommand fails.
 set -e
@@ -10,38 +33,51 @@ set -e
 # Check if any changes are uncommited.
 if ! git diff-files --quiet --ignore-submodules --
 then
-  echo >&2 "${RED}Please commit your changes first before deploying!"
+  echo >&2 "${RED}Please commit your changes first before deploying!${NC}"
   git diff-files --name-status -r --ignore-submodules -- >&2
   exit 0
 fi
 
-echo "Started deploying"
-
-# Checkout gh-pages branch.
-if [ `git branch | grep gh-pages` ]
-then
-  git branch -D gh-pages
+# Check if site URL is not localhost
+if [[ $config_url = *"localhost"* ]]; then
+  echo "${RED}Change site URL before deploying!${NC}"
+  exit 0
 fi
-git checkout -b gh-pages
+
+echo "${GREEN}Started deploying"
+
+# Checkout master branch.
+echo "${CYAN}Checkout branch to maste${NC}"
+if [ `git branch | grep master` ]
+then
+  git branch -D master
+fi
+git checkout -b master
 
 # Build site.
+echo "${CYAN}Run yarn install and bundle install${NC}"
 yarn install --modules-folder ./_assets/yarn
+bundle install
 bundle exec jekyll build
 
 # Delete and move files.
+echo "${CYAN}Deleting and moving files files.${NC}"
 find . -maxdepth 1 ! -name '_site' ! -name '.git' ! -name '.gitignore' -exec rm -rf {} \;
 mv _site/* .
 rm -R _site/
 
-# Push to gh-pages.
+# Push to master.
+echo "${CYAN}Pushing to master.${NC}"
 git add -fA
 git commit --allow-empty -m "$(git log -1 --pretty=%B) [ci skip]"
-git push -f -q origin gh-pages
+git push -f -q origin master
 
 # Move back to previous branch.
+echo "${CYAN}Moving back to develop branch${NC}"
 git checkout -
 yarn install --modules-folder ./_assets/yarn
+bundle install
 
-echo "Deployed Successfully!"
+echo "${GREEN}Deployed Successfully!${NC}"
 
 exit 0

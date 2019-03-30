@@ -13,3 +13,5 @@
 *.DS_Store
 *.sass-cache
 *.gem
+/.idea
+.idea
